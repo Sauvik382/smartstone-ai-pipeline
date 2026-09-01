@@ -4,6 +4,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
+const fs = require("fs");
+const path = require("path");
+
 require("./config/queue");
 require("./workers/documentWorker");
 
@@ -12,6 +15,12 @@ const uploadRoutes = require("./routes/upload");
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("📁 Created missing uploads directory for Render.");
+}
 
 mongoose
   .connect(process.env.MONGO_URI)

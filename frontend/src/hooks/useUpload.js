@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+import { API_BASE_URL } from '../config/api';
+
 export const useUpload = () => {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle'); 
@@ -12,7 +14,7 @@ export const useUpload = () => {
     if (jobId && (status === 'waiting' || status === 'active' || status === 'delayed')) {
       intervalId = setInterval(async () => {
         try {
-          const statusRes = await axios.get(`http://localhost:5000/api/upload/status/${jobId}`);
+          const statusRes = await axios.get(`${API_BASE_URL}/api/upload/status/${jobId}`);
           const currentState = statusRes.data.state;
 
           setStatus(currentState); 
@@ -44,7 +46,7 @@ export const useUpload = () => {
     setStatus('waiting');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setJobId(response.data.jobId); 

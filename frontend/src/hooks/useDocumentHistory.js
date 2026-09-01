@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 
+import { API_BASE_URL } from '../config/api';
+
 export const useDocumentHistory = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -8,7 +10,7 @@ export const useDocumentHistory = () => {
     const fetchHistory = async () => {
       try {
         const response = await fetch(
-          "http://localhost:5000/api/upload/history",
+          `${API_BASE_URL}/api/upload/history`,
         );
         const data = await response.json();
         setDocuments(data);
@@ -24,7 +26,7 @@ export const useDocumentHistory = () => {
 
   const deleteDoc = async (id) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/upload/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/upload/${id}`, {
         method: "DELETE",
       });
 
