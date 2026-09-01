@@ -16,10 +16,11 @@ const documentWorker = new Worker(
   "document-processing",
   async (job) => {
     console.log(`\n[Worker] 🧑‍🍳 Chef grabbed Job ID: ${job.id}`);
+    const filePath = job.data.path;
     
     try {
       console.log(`[Worker] 🔍 Extracting text from PDF...`);
-      const dataBuffer = fs.readFileSync(job.data.path);
+      const dataBuffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(dataBuffer);
       const extractedText = pdfData.text;
 
@@ -47,7 +48,7 @@ const documentWorker = new Worker(
         filename: job.data.filename,
         originalName: job.data.originalname,
         extractedText: extractedText, 
-        aiSummary: aiSummary,         
+        aiSummary: aiSummary,        
         jobId: job.id,
         status: "completed"
       });
@@ -65,6 +66,17 @@ const documentWorker = new Worker(
     } catch (error) {
       console.error(`[Worker] ❌ Failed to process document:`, error);
       throw error; 
+    } finally {
+      // GUARANTEED CLEANUP: Deletes the local temp file whether success or failure
+      if (filePath && fs.existsSync(filePath)) {
+        fs.unlink(filePath, (err) => {
+          if (err) {
+            console.error(`[Worker] ⚠️ Failed to delete local temp file at ${filePath}:`, err);
+          } else {
+            console.log(`[Worker] 🧹 Cleaned up local temp file successfully.`);
+          }
+        });
+      }
     }
   },
   { connection },
