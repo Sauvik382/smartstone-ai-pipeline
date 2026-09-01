@@ -1,0 +1,12 @@
+# Dependency directories
+node_modules/
+
+# Environment variables (CRITICAL)
+.env
+
+# Logs and runtime data
+*.log
+npm-debug.log*
+
+# Ignore temporary uploaded files
+uploads/
