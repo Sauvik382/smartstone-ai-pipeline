@@ -20,11 +20,11 @@ mongoose
 
 app.use("/api/upload", uploadRoutes);
 
-const PORT = 5000;
-app.listen(PORT, () => {
-  console.log(`Treehouse Post Office is OPEN on port ${PORT}`);
-});
-
 app.get("/", (req, res) => {
   res.send("🚀 Smartstone API is live and running!");
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Treehouse Post Office is OPEN on port ${PORT}`);
 });
