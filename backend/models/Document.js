@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const documentSchema = new mongoose.Schema({
+  userId: { 
+    type: String, 
+    required: true  
+  },
   filename: { 
     type: String, 
     required: true 

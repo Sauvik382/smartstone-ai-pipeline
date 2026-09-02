@@ -11,6 +11,7 @@
   "keywords": [],
   "type": "commonjs",
   "dependencies": {
+    "@clerk/express": "^2.1.65",
     "@google/generative-ai": "^0.24.1",
     "bullmq": "^6.2.1",
     "cors": "^2.8.6",

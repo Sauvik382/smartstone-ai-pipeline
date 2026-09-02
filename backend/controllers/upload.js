@@ -7,10 +7,13 @@ const handleUpload = async (req, res) => {
       return res.status(400).json({ error: "Hey! The box is empty!" });
     }
     
+    const userId = req.auth.userId; 
+
     const job = await documentQueue.add('process-pdf', {
       filename: req.file.filename,
       originalname: req.file.originalname,
-      path: req.file.path 
+      path: req.file.path,
+      userId: userId
     },{
       attempts: 5,
       backoff: {
@@ -52,8 +55,12 @@ const getJobStatus = async (req, res) => {
 
 const getHistory = async (req, res) => {
   try {
-    console.log('📡 Fetching document history from the Vault...');
-    const documents = await Document.find().sort({ createdAt: -1 }); 
+    const userId = req.auth.userId; 
+    
+    console.log(`📡 Fetching document history for user: ${userId}...`);
+    
+    const documents = await Document.find({ userId: userId }).sort({ createdAt: -1 }); 
+    
     res.status(200).json(documents);
   } catch (error) {
     console.error('❌ Error fetching history:', error);
@@ -65,11 +72,12 @@ const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Tell Mongoose to find the file and destroy it
-    const deletedDoc = await Document.findByIdAndDelete(id);
+    const userId = req.auth.userId; 
+    
+    const deletedDoc = await Document.findOneAndDelete({ _id: id, userId: userId });
     
     if (!deletedDoc) {
-      return res.status(404).json({ error: "Document not found in the Vault!" });
+      return res.status(404).json({ error: "Document not found, or you don't own it!" });
     }
     
     console.log(`🗑️ Deleted document: ${id}`);

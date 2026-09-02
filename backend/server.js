@@ -7,6 +7,8 @@ const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
 
+const { clerkMiddleware } = require('@clerk/express');
+
 require("./config/queue");
 require("./workers/documentWorker");
 
@@ -15,6 +17,8 @@ const uploadRoutes = require("./routes/upload");
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+app.use(clerkMiddleware());
 
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
