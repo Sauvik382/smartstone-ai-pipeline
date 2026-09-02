@@ -7,13 +7,14 @@ const handleUpload = async (req, res) => {
       return res.status(400).json({ error: "Hey! The box is empty!" });
     }
     
-    const userId = "anonymous-user";
+    // 1. Grab the device ID sent from the frontend apiClient
+    const userId = req.headers['x-user-id'] || "anonymous-user";
 
     const job = await documentQueue.add('process-pdf', {
       filename: req.file.filename,
       originalname: req.file.originalname,
       path: req.file.path,
-      userId: userId
+      userId: userId // 📌 Sent to the background worker!
     },{
       attempts: 5,
       backoff: {
@@ -55,9 +56,10 @@ const getJobStatus = async (req, res) => {
 
 const getHistory = async (req, res) => {
   try {
-    const userId = "anonymous-user";
+    // 1. Identify who is asking
+    const userId = req.headers['x-user-id'] || "anonymous-user";
     
-    console.log(`📡 Fetching document history...`);
+    console.log(`📡 Fetching document history for: ${userId}`);
     
     const documents = await Document.find({ userId: userId }).sort({ createdAt: -1 }); 
     
@@ -71,15 +73,17 @@ const getHistory = async (req, res) => {
 const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = "anonymous-user";
+    // 1. Identify who is asking
+    const userId = req.headers['x-user-id'] || "anonymous-user";
     
+    // 2. Delete ONLY if the document ID and User ID match
     const deletedDoc = await Document.findOneAndDelete({ _id: id, userId: userId });
     
     if (!deletedDoc) {
-      return res.status(404).json({ error: "Document not found!" });
+      return res.status(404).json({ error: "Document not found or unauthorized!" });
     }
     
-    console.log(`🗑️ Deleted document: ${id}`);
+    console.log(`🗑️ Deleted document: ${id} for user: ${userId}`);
     res.status(200).json({ message: "Document permanently deleted", id });
   } catch (error) {
     console.error('❌ Error deleting document:', error);

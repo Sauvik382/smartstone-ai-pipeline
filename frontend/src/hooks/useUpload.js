@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-import { API_BASE_URL } from '../config/api';
+import { apiClient } from '../utils/api';
 
 export const useUpload = () => {
   const [file, setFile] = useState(null);
@@ -14,7 +12,8 @@ export const useUpload = () => {
     if (jobId && (status === 'waiting' || status === 'active' || status === 'delayed')) {
       intervalId = setInterval(async () => {
         try {
-          const statusRes = await axios.get(`${API_BASE_URL}/api/upload/status/${jobId}`);
+          // Using apiClient to poll status securely
+          const statusRes = await apiClient.get(`/api/upload/status/${jobId}`);
           const currentState = statusRes.data.state;
 
           setStatus(currentState); 
@@ -46,12 +45,12 @@ export const useUpload = () => {
     setStatus('waiting');
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // apiClient handles the base URL and the custom x-user-id header automatically.
+      // Axios also automatically sets 'multipart/form-data' when it detects FormData!
+      const response = await apiClient.post(`/api/upload`, formData);
       setJobId(response.data.jobId); 
     } catch (error) {
-      console.error(error);
+      console.error("Upload failed:", error);
       setStatus('failed');
     }
   };

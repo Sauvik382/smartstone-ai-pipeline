@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API_BASE_URL } from '../config/api';
+import { apiClient } from '../utils/api';
 
 export const useDocumentHistory = () => {
   const [documents, setDocuments] = useState([]);
@@ -8,9 +8,9 @@ export const useDocumentHistory = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/upload/history`);
-        const data = await response.json();
-        setDocuments(data);
+        // apiClient automatically includes the x-user-id header!
+        const response = await apiClient.get('/api/upload/history');
+        setDocuments(response.data); // Axios puts the JSON in .data
         setLoading(false);
       } catch (error) {
         console.error("❌ Failed to fetch history:", error);
@@ -23,11 +23,10 @@ export const useDocumentHistory = () => {
 
   const deleteDoc = async (id) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/upload/${id}`, {
-        method: "DELETE",
-      });
+      const response = await apiClient.delete(`/api/upload/${id}`);
 
-      if (response.ok) {
+      // Axios throws an error for non-2xx status, so if we reach here, it was successful
+      if (response.status === 200 || response.status === 204) {
         setDocuments((prevDocs) => prevDocs.filter((doc) => doc._id !== id));
       }
     } catch (error) {
