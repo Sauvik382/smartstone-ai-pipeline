@@ -76,7 +76,26 @@ const documentWorker = new Worker(
 );
 
 documentWorker.on("failed", (job, err) => {
-  console.error(`[Worker] ❌ Job ${job.id} failed completely: ${err.message}`);
+  console.error(`[Worker] ❌ Job ${job.id} failed: ${err.message}`);
+  
+  // Check if the job has exhausted all of its allowed retry attempts
+  const maxAttempts = job.opts.attempts || 1;
+  
+  if (job.attemptsMade >= maxAttempts) {
+    console.warn(`[Worker] 🚨 Job ${job.id} failed permanently! Cleaning up toxic file...`);
+    
+    // Safely resolve the path and delete the file to protect server disk space
+    const filePath = path.resolve(process.cwd(), job.data.path);
+    if (fs.existsSync(filePath)) {
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error(`[Worker] ⚠️ Failed to delete toxic file:`, unlinkErr);
+        } else {
+          console.log(`[Worker] 🗑️ Toxic file safely deleted. Server space protected!`);
+        }
+      });
+    }
+  }
 });
 
 console.log("Chef is awake, equipped with AI, and ready to analyze...");
