@@ -48,9 +48,10 @@ const documentWorker = new Worker(
         filename: job.data.filename,
         originalName: job.data.originalname,
         extractedText: extractedText, 
-        aiSummary: aiSummary,        
+        aiSummary: aiSummary,         
         jobId: job.id,
-        status: "completed"
+        status: "completed",
+        userId: job.data.userId || "anonymous-user" // 🛡️ Fallback so Mongoose validation passes
       });
 
       await savedDoc.save();
@@ -70,7 +71,6 @@ const documentWorker = new Worker(
       console.error(`[Worker] ❌ Failed to process document:`, error.message);
       throw error; 
     } 
-    // Notice: The finally block is GONE!
   },
   { connection },
 );
@@ -78,13 +78,11 @@ const documentWorker = new Worker(
 documentWorker.on("failed", (job, err) => {
   console.error(`[Worker] ❌ Job ${job.id} failed: ${err.message}`);
   
-  // Check if the job has exhausted all of its allowed retry attempts
   const maxAttempts = job.opts.attempts || 1;
   
   if (job.attemptsMade >= maxAttempts) {
     console.warn(`[Worker] 🚨 Job ${job.id} failed permanently! Cleaning up toxic file...`);
     
-    // Safely resolve the path and delete the file to protect server disk space
     const filePath = path.resolve(process.cwd(), job.data.path);
     if (fs.existsSync(filePath)) {
       fs.unlink(filePath, (unlinkErr) => {
