@@ -1,5 +1,4 @@
 import React from 'react';
-import { SignInButton } from "@clerk/clerk-react";
 
 function WelcomeScreen() {
   return (
@@ -8,13 +7,8 @@ function WelcomeScreen() {
         Welcome to your AI Pipeline
       </h2>
       <p className="text-gray-600 mb-6">
-        Please log in to upload blueprints, process documents, and access your secure vault.
+        Upload blueprints, process documents, and access your vault seamlessly.
       </p>
-      <SignInButton mode="modal">
-        <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors shadow-md">
-          Get Started
-        </button>
-      </SignInButton>
     </div>
   );
 }

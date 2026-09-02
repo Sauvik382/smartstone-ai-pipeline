@@ -7,8 +7,6 @@ const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
 
-const { clerkMiddleware } = require('@clerk/express');
-
 require("./config/queue");
 require("./workers/documentWorker");
 
@@ -18,8 +16,6 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-app.use(clerkMiddleware());
-
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -27,10 +23,13 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+    bufferCommands: false,         
+  })
   .then(() => console.log("🗄️  MongoDB Vault is securely locked and loaded!"))
-  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
-
+  .catch((err) => console.error("❌ MongoDB Connection Error on Render:", err));
+  
 app.use("/api/upload", uploadRoutes);
 
 app.get("/", (req, res) => {

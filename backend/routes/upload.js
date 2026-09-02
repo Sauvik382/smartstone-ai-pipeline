@@ -3,8 +3,6 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 
-const { requireAuth } = require('@clerk/express');
-
 const { handleUpload, getJobStatus, getHistory, deleteDocument } = require("../controllers/upload");
 
 const storage = multer.diskStorage({
@@ -18,9 +16,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-router.post("/", requireAuth(), upload.single("document"), handleUpload);
-router.get("/history", requireAuth(), getHistory);
-router.get("/status/:id", requireAuth(), getJobStatus);
-router.delete("/:id", requireAuth(), deleteDocument);
+router.post("/", upload.single("document"), handleUpload);
+router.get("/history", getHistory);
+router.get("/status/:id", getJobStatus);
+router.delete("/:id", deleteDocument);
 
 module.exports = router;
