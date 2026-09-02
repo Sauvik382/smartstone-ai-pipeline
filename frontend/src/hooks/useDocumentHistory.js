@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-
+import { useAuth } from "@clerk/clerk-react";
 import { API_BASE_URL } from '../config/api';
 
 export const useDocumentHistory = () => {
@@ -29,7 +29,7 @@ export const useDocumentHistory = () => {
     };
 
     fetchHistory();
-  }, []);
+  }, [getToken]);
 
   const deleteDoc = async (id) => {
     try {
@@ -37,12 +37,11 @@ export const useDocumentHistory = () => {
       const response = await fetch(`${API_BASE_URL}/api/upload/${id}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${token}`, // Pass the token here
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (response.ok) {
-        // Instantly remove the deleted doc from the UI state!
         setDocuments((prevDocs) => prevDocs.filter((doc) => doc._id !== id));
       }
     } catch (error) {
@@ -50,6 +49,5 @@ export const useDocumentHistory = () => {
     }
   };
 
-  // The hook just returns the data your UI needs
   return { documents, loading, deleteDoc };
 };
