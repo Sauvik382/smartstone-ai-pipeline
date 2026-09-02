@@ -1,5 +1,6 @@
 const Document = require('../models/Document');
 const { documentQueue } = require('../config/queue');
+const { getAuth } = require('@clerk/express'); // 🔑 Import getAuth
 
 const handleUpload = async (req, res) => {
   try {
@@ -7,7 +8,7 @@ const handleUpload = async (req, res) => {
       return res.status(400).json({ error: "Hey! The box is empty!" });
     }
     
-    const userId = req.auth.userId; 
+    const { userId } = getAuth(req); // Use getAuth here too
 
     const job = await documentQueue.add('process-pdf', {
       filename: req.file.filename,
@@ -55,9 +56,13 @@ const getJobStatus = async (req, res) => {
 
 const getHistory = async (req, res) => {
   try {
-    const userId = req.auth.userId; 
+    const { userId } = getAuth(req); // Safely extract userId
     
     console.log(`📡 Fetching document history for user: ${userId}...`);
+    
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     
     const documents = await Document.find({ userId: userId }).sort({ createdAt: -1 }); 
     
@@ -71,8 +76,11 @@ const getHistory = async (req, res) => {
 const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
+    const { userId } = getAuth(req); // Safely extract userId
     
-    const userId = req.auth.userId; 
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     
     const deletedDoc = await Document.findOneAndDelete({ _id: id, userId: userId });
     
