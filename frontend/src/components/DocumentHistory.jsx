@@ -3,7 +3,6 @@ import DocumentCard from './DocumentCard';
 import { useDocumentHistory } from '../hooks/useDocumentHistory'; // 1. Import the hook
 
 const DocumentHistory = () => {
-  // 2. Call the hook! All the messy logic is hidden away in the other file.
   const { documents, loading, deleteDoc } = useDocumentHistory();
 
   if (loading) {
