@@ -44,6 +44,15 @@ const documentWorker = new Worker(
       }
 
       console.log(`[Worker] ✨ AI Analysis complete!`);
+
+      // 🧹 AUTO-CLEANUP CHECK: If total summaries reach 50, wipe everything
+      const totalDocs = await Document.countDocuments();
+      if (totalDocs >= 50) {
+        console.log(`[Worker] ⚠️ Limit of 50 summaries reached! Wiping all records...`);
+        await Document.deleteMany({});
+        console.log(`[Worker] 🗑️ Database cleaned successfully.`);
+      }
+
       const savedDoc = new Document({
         filename: job.data.filename,
         originalName: job.data.originalname,
