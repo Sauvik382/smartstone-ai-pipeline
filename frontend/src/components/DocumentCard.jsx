@@ -2,11 +2,11 @@ import React from "react";
 
 const DocumentCard = ({ doc, onDelete }) => {
   return (
-    <div className="border border-gray-200 p-4 md:p-5 rounded-lg shadow-sm bg-white">
+    <div className="border border-gray-200 p-3 sm:p-4 md:p-5 rounded-lg shadow-sm bg-white max-w-full overflow-hidden">
       
-      {/* Header section: Stacked on mobile (flex-col), horizontal on desktop (md:flex-row) */}
+      {/* Header section: Stacked on mobile, horizontal on desktop */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-3">
-        <h3 className="font-semibold text-base md:text-lg text-blue-600 break-words line-clamp-2 md:line-clamp-none">
+        <h3 className="font-semibold text-sm sm:text-base md:text-lg text-blue-600 break-all sm:break-words flex-1 min-w-0">
           📄 {doc.originalName}
         </h3>
         
@@ -25,11 +25,13 @@ const DocumentCard = ({ doc, onDelete }) => {
       </div>
 
       {/* Summary section */}
-      <div className="bg-gray-50 p-3 md:p-4 rounded border-l-4 border-blue-400">
+      <div className="bg-gray-50 p-3 md:p-4 rounded border-l-4 border-blue-400 overflow-hidden">
         <p className="text-sm font-semibold text-gray-600 mb-1">
           ✨ AI Summary:
         </p>
-        <p className="text-gray-800 text-sm leading-relaxed">{doc.aiSummary}</p>
+        <p className="text-gray-800 text-xs sm:text-sm leading-relaxed break-words">
+          {doc.aiSummary}
+        </p>
       </div>
     </div>
   );
