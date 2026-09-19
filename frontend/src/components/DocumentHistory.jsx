@@ -1,8 +1,8 @@
 import React from 'react';
 import DocumentCard from './DocumentCard';
-import { useDocumentHistory } from '../hooks/useDocumentHistory'; // 1. Import the hook
+import { useDocumentHistory } from '../hooks/useDocumentHistory';
 
-const DocumentHistory = () => {
+const DocumentHistory = ({ onSelectDocument, selectedDocId }) => {
   const { documents, loading, deleteDoc } = useDocumentHistory();
 
   if (loading) {
@@ -18,7 +18,13 @@ const DocumentHistory = () => {
       ) : (
         <div className="grid gap-6">
           {documents.map((doc) => (
-            <DocumentCard key={doc._id} doc={doc} onDelete={deleteDoc}/>
+            <DocumentCard 
+              key={doc._id} 
+              doc={doc} 
+              onDelete={deleteDoc}
+              onSelect={() => onSelectDocument && onSelectDocument(doc)}
+              isSelected={selectedDocId === doc._id}
+            />
           ))}
         </div>
       )}
