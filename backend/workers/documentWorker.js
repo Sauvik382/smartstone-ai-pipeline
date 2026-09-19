@@ -94,10 +94,12 @@ function enforceDimension(vec, targetDim = TARGET_DIMENSION) {
 // ---------------------------------------------------------------------------
  
 /**
- * Tries the current @pinecone-database/pinecone upsert signature first,
- * then falls back to older shapes some SDK versions expect. This is a
- * stopgap for SDK-version drift, NOT a substitute for pinning your
- * @pinecone-database/pinecone version in package.json — do that too.
+ * @pinecone-database/pinecone v9's upsert() expects { records: [...] } —
+ * NOT a bare array, NOT { vectors }, NOT { upsertRequest: { vectors } }
+ * (those were all valid in older major versions, which is why this used
+ * to be a guessing game). Confirmed against Pinecone's current SDK docs.
+ * The bare-array format is kept as a fallback only in case the installed
+ * version ever changes again.
  */
 async function upsertWithFallback(index, records) {
   if (!Array.isArray(records) || records.length === 0) {
@@ -105,9 +107,8 @@ async function upsertWithFallback(index, records) {
   }
  
   const attempts = [
+    { label: "upsert({ records })", run: () => index.upsert({ records }) },
     { label: "upsert(records)", run: () => index.upsert(records) },
-    { label: "upsert({ upsertRequest: { vectors: records } })", run: () => index.upsert({ upsertRequest: { vectors: records } }) },
-    { label: "upsert({ vectors: records })", run: () => index.upsert({ vectors: records }) },
   ];
  
   let lastErr;
@@ -270,3 +271,4 @@ documentWorker.on("failed", (job, err) => {
 console.log("Chef is awake, equipped with AI, and ready to analyze...");
  
 module.exports = documentWorker;
+ 
