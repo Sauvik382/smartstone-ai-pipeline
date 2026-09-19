@@ -5,7 +5,7 @@ const path = require("path");
 const pdfParse = require("pdf-parse"); 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const { RecursiveCharacterTextSplitter } = require("langchain/text_splitter");
+const { RecursiveCharacterTextSplitter } = require("@langchain/textsplitters");
 const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
 const { pineconeIndex } = require("../config/pinecone");
 
