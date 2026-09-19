@@ -5,6 +5,10 @@ const path = require("path");
 const pdfParse = require("pdf-parse"); 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
+const { RecursiveCharacterTextSplitter } = require("langchain/text_splitter");
+const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
+const { pineconeIndex } = require("../config/pinecone");
+
 const Document = require("../models/Document");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -20,6 +24,7 @@ const documentWorker = new Worker(
     
     // Bulletproof the path for Render's environment
     const filePath = path.resolve(process.cwd(), job.data.path);
+    const currentUserId = job.data.userId || "anonymous-user";
     
     try {
       console.log(`[Worker] 🔍 Extracting text from PDF at ${filePath}...`);
@@ -60,11 +65,43 @@ const documentWorker = new Worker(
         aiSummary: aiSummary,         
         jobId: job.id,
         status: "completed",
-        userId: job.data.userId || "anonymous-user" // 🛡️ Fallback so Mongoose validation passes
+        userId: currentUserId
       });
 
       await savedDoc.save();
       console.log(`[Worker] 🏆 Success! Document safely filed in the database.`);
+
+      console.log(`[Worker] 🔪 Slicing document into manageable chunks...`);
+      
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize: 1000,
+        chunkOverlap: 200, 
+      });
+
+      const chunks = await splitter.createDocuments([extractedText]);
+      const chunkTexts = chunks.map(chunk => chunk.pageContent);
+      console.log(`[Worker] 🧩 Created ${chunkTexts.length} chunks. Generating embeddings...`);
+
+      const embeddingsClient = new GoogleGenerativeAIEmbeddings({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: "text-embedding-004", 
+      });
+
+      const vectors = await embeddingsClient.embedDocuments(chunkTexts);
+      console.log(`[Worker] 🚀 Uploading ${vectors.length} vectors to Pinecone...`);
+
+      const pineconeRecords = vectors.map((vectorArray, index) => ({
+        id: `${savedDoc._id}-chunk-${index}`, 
+        values: vectorArray,
+        metadata: {
+          text: chunkTexts[index], 
+          userId: currentUserId,   
+          docId: savedDoc._id.toString(), 
+        }
+      }));
+
+      await pineconeIndex.upsert(pineconeRecords);
+      console.log(`[Worker] 🌲 Successfully embedded and stored in Pinecone!`);
 
       // GUARANTEED CLEANUP: ONLY DELETE ON SUCCESS!
       if (fs.existsSync(filePath)) {
