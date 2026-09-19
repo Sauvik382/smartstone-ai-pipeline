@@ -4,16 +4,18 @@ const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
 const { pineconeIndex } = require("../config/pinecone");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// 🛡️ Swapped model from "text-embedding-004" to active "embedding-001"
 const embeddingsClient = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GEMINI_API_KEY,
-  model: "text-embedding-004", 
+  model: "embedding-001", 
 });
 
 const askQuestion = async (req, res) => {
   try {
     const { docId, question } = req.body;
     
-    // We grab the same exact device ID we used during upload
+    // Grab device ID from header
     const userId = req.headers['x-user-id'] || "anonymous-user";
 
     if (!docId || !question) {
@@ -22,28 +24,31 @@ const askQuestion = async (req, res) => {
 
     console.log(`[Chat] 🔎 Searching vectors for question: "${question}"`);
 
-    // 1. Convert the user's question into a mathematical vector
+    // 1. Convert user's question into vector using active embedding-001 model
     const questionVector = await embeddingsClient.embedQuery(question);
 
-    // 2. Query Pinecone for the top 3 most relevant chunks
+    // 2. Query Pinecone for top matching chunks
     const searchResults = await pineconeIndex.query({
       vector: questionVector,
       topK: 3, 
       includeMetadata: true,
       filter: {
         userId: userId,
-        docId: docId 
+        docId: String(docId) 
       }
     });
 
-    // 3. Extract the actual paragraph text from the Pinecone match results
-    const contextChunks = searchResults.matches.map(match => match.metadata.text).join("\n\n---\n\n");
+    // 3. Extract text from matches
+    const contextChunks = searchResults.matches
+      .map(match => match.metadata?.text)
+      .filter(Boolean)
+      .join("\n\n---\n\n");
 
     if (!contextChunks) {
       return res.status(404).json({ answer: "I couldn't find any relevant information in the document to answer that." });
     }
 
-    // 4. Construct the prompt by merging document context and user question
+    // 4. Build strict grounded prompt
     const prompt = `You are an intelligent document assistant. Use the provided context extracted from the user's document to answer their question. If the answer cannot be found in the context, clearly state that you do not know.
 
 DOCUMENT CONTEXT:

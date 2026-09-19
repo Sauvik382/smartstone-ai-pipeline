@@ -82,13 +82,19 @@ const documentWorker = new Worker(
       const chunkTexts = chunks.map(chunk => chunk.pageContent);
       console.log(`[Worker] 🧩 Created ${chunkTexts.length} chunks. Generating embeddings...`);
 
+      // 🛡️ Swapped model from "text-embedding-004" to active "embedding-001"
       const embeddingsClient = new GoogleGenerativeAIEmbeddings({
         apiKey: process.env.GEMINI_API_KEY,
-        model: "text-embedding-004", 
+        model: "embedding-001", 
       });
 
       const vectors = await embeddingsClient.embedDocuments(chunkTexts);
       
+      // Safety validation on generated vectors
+      if (!vectors || vectors.length === 0 || !vectors[0] || vectors[0].length === 0) {
+        throw new Error("Gemini AI returned empty or invalid embedding vectors.");
+      }
+
       const pineconeRecords = vectors.map((vectorArray, index) => ({
         id: `${savedDoc._id.toString()}-chunk-${index}`, 
         values: vectorArray,
@@ -103,12 +109,10 @@ const documentWorker = new Worker(
 
       // 🛡️ Cross-Version Pinecone Compatibility Fix
       try {
-        // Try the standard modern SDK format first
         await pineconeIndex.upsert(pineconeRecords);
       } catch (upsertError) {
-        if (upsertError.message.includes("at least 1 record") || upsertError.message.includes("vectors")) {
-          console.log(`[Worker] ⚠️ API rejected raw array. Attempting legacy Pinecone v1 wrapper format...`);
-          // Fallback to the strict legacy wrapper format
+        if (upsertError.message && (upsertError.message.includes("at least 1 record") || upsertError.message.includes("vectors"))) {
+          console.log(`[Worker] ⚠️ API rejected raw array. Attempting legacy Pinecone wrapper format...`);
           await pineconeIndex.upsert({
             upsertRequest: {
               vectors: pineconeRecords
