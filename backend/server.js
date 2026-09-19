@@ -26,7 +26,7 @@ if (!fs.existsSync(uploadDir)) {
 mongoose
   .connect(process.env.MONGO_URI, {
     serverSelectionTimeoutMS: 5000,
-    bufferCommands: false,         
+    // bufferCommands: false,         
   })
   .then(() => console.log("🗄️  MongoDB Vault is securely locked and loaded!"))
   .catch((err) => console.error("❌ MongoDB Connection Error on Render:", err));

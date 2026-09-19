@@ -86,7 +86,6 @@ const documentWorker = new Worker(
       const embeddingsClient = new GoogleGenerativeAIEmbeddings({
         apiKey: process.env.GEMINI_API_KEY,
         model: "gemini-embedding-001",
-        outputDimensionality: 768 
       });
 
       const vectors = await embeddingsClient.embedDocuments(chunkTexts);
@@ -96,33 +95,25 @@ const documentWorker = new Worker(
         throw new Error("Gemini AI returned empty or invalid embedding vectors.");
       }
 
-      const pineconeRecords = vectors.map((vectorArray, index) => ({
-        id: `${savedDoc._id.toString()}-chunk-${index}`, 
-        values: vectorArray,
-        metadata: {
-          text: chunkTexts[index], 
-          userId: currentUserId,   
-          docId: savedDoc._id.toString(), 
-        }
-      }));
+      const pineconeRecords = vectors.map((vectorArray, index) => {
+        // 🛡️ THE FIX: Manually slice the vector to strictly enforce 768 dimensions
+        const dimensionSafeVector = vectorArray.length > 768 ? vectorArray.slice(0, 768) : vectorArray;
+
+        return {
+          id: `${savedDoc._id.toString()}-chunk-${index}`, 
+          values: dimensionSafeVector,
+          metadata: {
+            text: chunkTexts[index], 
+            userId: currentUserId,   
+            docId: savedDoc._id.toString(), 
+          }
+        };
+      });
 
       console.log(`[Worker] 🚀 Uploading ${pineconeRecords.length} vectors to Pinecone...`);
 
-      // 🛡️ Cross-Version Pinecone Compatibility Fix
-      try {
-        await pineconeIndex.upsert(pineconeRecords);
-      } catch (upsertError) {
-        if (upsertError.message && (upsertError.message.includes("at least 1 record") || upsertError.message.includes("vectors"))) {
-          console.log(`[Worker] ⚠️ API rejected raw array. Attempting legacy Pinecone wrapper format...`);
-          await pineconeIndex.upsert({
-            upsertRequest: {
-              vectors: pineconeRecords
-            }
-          });
-        } else {
-          throw upsertError; 
-        }
-      }
+      // 🛡️ Push the pristine array directly. No hidden wrapper fallback to swallow errors!
+      await pineconeIndex.upsert(pineconeRecords);
 
       console.log(`[Worker] 🌲 Successfully embedded and stored in Pinecone!`);
 
