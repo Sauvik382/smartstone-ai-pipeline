@@ -8,7 +8,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // 🛡️ Swapped model from "text-embedding-004" to active "embedding-001"
 const embeddingsClient = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GEMINI_API_KEY,
-  model: "embedding-001", 
+  model: "gemini-embedding-001",
+  outputDimensionality: 768
 });
 
 const askQuestion = async (req, res) => {
