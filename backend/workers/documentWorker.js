@@ -88,10 +88,9 @@ const documentWorker = new Worker(
       });
 
       const vectors = await embeddingsClient.embedDocuments(chunkTexts);
-      console.log(`[Worker] 🚀 Uploading ${vectors.length} vectors to Pinecone...`);
-
+      
       const pineconeRecords = vectors.map((vectorArray, index) => ({
-        id: `${savedDoc._id}-chunk-${index}`, 
+        id: `${savedDoc._id.toString()}-chunk-${index}`, 
         values: vectorArray,
         metadata: {
           text: chunkTexts[index], 
@@ -100,7 +99,26 @@ const documentWorker = new Worker(
         }
       }));
 
-      await pineconeIndex.upsert(pineconeRecords);
+      console.log(`[Worker] 🚀 Uploading ${pineconeRecords.length} vectors to Pinecone...`);
+
+      // 🛡️ Cross-Version Pinecone Compatibility Fix
+      try {
+        // Try the standard modern SDK format first
+        await pineconeIndex.upsert(pineconeRecords);
+      } catch (upsertError) {
+        if (upsertError.message.includes("at least 1 record") || upsertError.message.includes("vectors")) {
+          console.log(`[Worker] ⚠️ API rejected raw array. Attempting legacy Pinecone v1 wrapper format...`);
+          // Fallback to the strict legacy wrapper format
+          await pineconeIndex.upsert({
+            upsertRequest: {
+              vectors: pineconeRecords
+            }
+          });
+        } else {
+          throw upsertError; 
+        }
+      }
+
       console.log(`[Worker] 🌲 Successfully embedded and stored in Pinecone!`);
 
       // GUARANTEED CLEANUP: ONLY DELETE ON SUCCESS!
