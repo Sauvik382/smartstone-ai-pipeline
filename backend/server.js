@@ -11,6 +11,7 @@ require("./config/queue");
 require("./workers/documentWorker");
 
 const uploadRoutes = require("./routes/upload");
+const chatRoutes = require("./routes/chat");
 
 const app = express();
 app.use(express.json());
@@ -31,6 +32,7 @@ mongoose
   .catch((err) => console.error("❌ MongoDB Connection Error on Render:", err));
   
 app.use("/api/upload", uploadRoutes);
+app.use("/api/chat", chatRoutes);
 
 app.get("/", (req, res) => {
   res.send("🚀 Smartstone API is live and running!");
