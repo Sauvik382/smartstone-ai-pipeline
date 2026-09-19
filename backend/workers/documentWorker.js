@@ -153,12 +153,12 @@ const documentWorker = new Worker(
       let aiSummary = "";
  
       try {
-        const model = genAI.getGenerativeModel({ model: "gemini-3.7-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
         const result = await model.generateContent(prompt);
         aiSummary = result.response.text();
       } catch (primaryError) {
         console.warn(`[Worker] ⚠️ Primary model failed. Switching to fallback model...`);
-        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await fallbackModel.generateContent(prompt);
         aiSummary = result.response.text();
       }
