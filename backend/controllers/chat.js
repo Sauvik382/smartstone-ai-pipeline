@@ -5,7 +5,6 @@ const { pineconeIndex } = require("../config/pinecone");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 🛡️ Upgraded to current Gemini model
 const embeddingsClient = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GEMINI_API_KEY,
   model: "gemini-embedding-001",
@@ -25,9 +24,20 @@ const askQuestion = async (req, res) => {
     console.log(`[Chat] 🔎 Searching vectors for question: "${question}"`);
 
     // 1. Convert user's question into vector using active model
-    let questionVector = await embeddingsClient.embedQuery(question);
+    let rawVector = await embeddingsClient.embedQuery(question);
 
-    // 🛡️ THE FIX: Manually slice the question vector to match the 768 dimension database limit
+    // 🛡️ THE FIX: Deep extraction to guarantee a raw JavaScript array
+    if (!Array.isArray(rawVector)) {
+      rawVector = rawVector.values || rawVector.embedding || [];
+    }
+
+    let questionVector = Array.from(rawVector);
+    
+    if (questionVector.length === 0) {
+      return res.status(500).json({ error: "AI returned an invalid search vector." });
+    }
+
+    // 🛡️ Enforce exactly 768 dimensions for Pinecone
     if (questionVector.length > 768) {
       questionVector = questionVector.slice(0, 768);
     }
@@ -85,4 +95,4 @@ USER QUESTION: ${question}`;
   }
 };
 
-module.exports = { askQuestion }; 
+module.exports = { askQuestion };

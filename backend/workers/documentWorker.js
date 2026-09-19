@@ -82,7 +82,6 @@ const documentWorker = new Worker(
       const chunkTexts = chunks.map(chunk => chunk.pageContent);
       console.log(`[Worker] 🧩 Created ${chunkTexts.length} chunks. Generating embeddings...`);
 
-      // 🛡️ Swapped model from "text-embedding-004" to active "embedding-001"
       const embeddingsClient = new GoogleGenerativeAIEmbeddings({
         apiKey: process.env.GEMINI_API_KEY,
         model: "gemini-embedding-001",
@@ -90,14 +89,25 @@ const documentWorker = new Worker(
 
       const vectors = await embeddingsClient.embedDocuments(chunkTexts);
       
-      // Safety validation on generated vectors
-      if (!vectors || vectors.length === 0 || !vectors[0] || vectors[0].length === 0) {
-        throw new Error("Gemini AI returned empty or invalid embedding vectors.");
+      if (!vectors || vectors.length === 0) {
+        throw new Error("Gemini AI returned no embedding vectors.");
       }
 
-      const pineconeRecords = vectors.map((vectorArray, index) => {
-        // 🛡️ THE FIX: Manually slice the vector to strictly enforce 768 dimensions
-        const dimensionSafeVector = vectorArray.length > 768 ? vectorArray.slice(0, 768) : vectorArray;
+      const pineconeRecords = vectors.map((vectorItem, index) => {
+        // 🛡️ THE FIX: Deep extraction to guarantee a raw JavaScript array, not an object
+        let rawArray = vectorItem;
+        if (!Array.isArray(vectorItem)) {
+          rawArray = vectorItem.values || vectorItem.embedding || [];
+        }
+
+        const standardArray = Array.from(rawArray);
+        
+        if (standardArray.length === 0) {
+          throw new Error(`AI returned an empty or invalid vector for chunk ${index}.`);
+        }
+
+        // 🛡️ Enforce exactly 768 dimensions for Pinecone
+        const dimensionSafeVector = standardArray.length > 768 ? standardArray.slice(0, 768) : standardArray;
 
         return {
           id: `${savedDoc._id.toString()}-chunk-${index}`, 
@@ -111,10 +121,7 @@ const documentWorker = new Worker(
       });
 
       console.log(`[Worker] 🚀 Uploading ${pineconeRecords.length} vectors to Pinecone...`);
-
-      // 🛡️ Push the pristine array directly. No hidden wrapper fallback to swallow errors!
       await pineconeIndex.upsert(pineconeRecords);
-
       console.log(`[Worker] 🌲 Successfully embedded and stored in Pinecone!`);
 
       // GUARANTEED CLEANUP: ONLY DELETE ON SUCCESS!
