@@ -1,6 +1,11 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
 const { pineconeIndex } = require("../config/pinecone");
+const {
+  generateWithRetry,
+  isRetryableGoogleError,
+  RateLimitExceededError,
+} = require("../utils/geminiClient");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -191,15 +196,34 @@ USER QUESTION: ${question}`;
 
     let aiAnswer = "";
 
+    // 🛡️ Primary + fallback, each going through the shared free-tier
+    // rate limiter and retry-with-backoff (see utils/geminiClient.js)
     try {
       const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-      const result = await model.generateContent(prompt);
-      aiAnswer = result.response.text();
+      aiAnswer = await generateWithRetry(model, "gemini-3.6-flash", prompt);
     } catch (primaryError) {
       console.warn(`[Chat] ⚠️ Primary model failed: ${primaryError.message}`);
-      const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
-      const result = await fallbackModel.generateContent(prompt);
-      aiAnswer = result.response.text();
+      try {
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+        aiAnswer = await generateWithRetry(fallbackModel, "gemini-3.5-flash", prompt);
+      } catch (fallbackError) {
+        console.error(`[Chat] ❌ Fallback model also failed: ${fallbackError.message}`);
+
+        if (fallbackError instanceof RateLimitExceededError) {
+          return res.status(429).json({
+            error: "You've hit today's free-tier limit for the AI model. Please try again later.",
+            retryAfterSeconds: fallbackError.retryAfterSeconds,
+          });
+        }
+
+        if (isRetryableGoogleError(fallbackError)) {
+          return res.status(503).json({
+            error: "Our AI provider is experiencing high demand right now. Please try again in a moment.",
+          });
+        }
+
+        return res.status(500).json({ error: "Failed to generate answer." });
+      }
     }
 
     // 5. Safety net: strip any Markdown symbols that slipped through anyway

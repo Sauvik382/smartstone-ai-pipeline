@@ -4,25 +4,26 @@ const fs = require("fs");
 const path = require("path");
 const pdfParse = require("pdf-parse");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
- 
+
 const { RecursiveCharacterTextSplitter } = require("@langchain/textsplitters");
 const { GoogleGenerativeAIEmbeddings } = require("@langchain/google-genai");
 const { pineconeIndex } = require("../config/pinecone");
- 
+const { generateWithRetry, RateLimitExceededError } = require("../utils/geminiClient");
+
 const Document = require("../models/Document");
- 
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
- 
+
 const connection = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
- 
+
 const TARGET_DIMENSION = 768;
- 
+
 // ---------------------------------------------------------------------------
 // Embedding helpers
 // ---------------------------------------------------------------------------
- 
+
 /**
  * Normalizes any shape an embeddings client might return (raw array,
  * TypedArray, { values: [...] }, { embedding: [...] }, { embedding: { values } })
@@ -30,7 +31,7 @@ const TARGET_DIMENSION = 768;
  */
 function extractEmbeddingArray(raw) {
   let arr = raw;
- 
+
   if (!Array.isArray(arr)) {
     if (ArrayBuffer.isView(arr)) {
       arr = Array.from(arr);
@@ -44,19 +45,19 @@ function extractEmbeddingArray(raw) {
       arr = [];
     }
   }
- 
+
   const nums = Array.from(arr, Number);
- 
+
   if (nums.length === 0) {
     throw new Error("Embedding extraction produced an empty array — check the embeddings client response shape.");
   }
   if (nums.some((n) => Number.isNaN(n))) {
     throw new Error("Embedding array contains NaN values after casting — refusing to send a corrupt vector to Pinecone.");
   }
- 
+
   return nums;
 }
- 
+
 /**
  * L2-normalizes a vector. Required any time you truncate a Matryoshka
  * (MRL) embedding like gemini-embedding-001, since Google only guarantees
@@ -69,7 +70,7 @@ function l2Normalize(vec) {
   if (norm === 0) return vec;
   return vec.map((v) => v / norm);
 }
- 
+
 /**
  * Enforces exactly TARGET_DIMENSION on an embedding vector.
  * - Longer vectors are truncated then renormalized (valid for MRL models).
@@ -78,21 +79,21 @@ function l2Normalize(vec) {
  */
 function enforceDimension(vec, targetDim = TARGET_DIMENSION) {
   if (vec.length === targetDim) return vec;
- 
+
   if (vec.length > targetDim) {
     return l2Normalize(vec.slice(0, targetDim));
   }
- 
+
   throw new Error(
     `Embedding vector has ${vec.length} dimensions, expected ${targetDim}. ` +
       `This usually means the embedding model/config changed — do not pad it, fix the source.`
   );
 }
- 
+
 // ---------------------------------------------------------------------------
 // Pinecone upsert helper
 // ---------------------------------------------------------------------------
- 
+
 /**
  * @pinecone-database/pinecone v9's upsert() expects { records: [...] } —
  * NOT a bare array, NOT { vectors }, NOT { upsertRequest: { vectors } }
@@ -105,12 +106,12 @@ async function upsertWithFallback(index, records) {
   if (!Array.isArray(records) || records.length === 0) {
     throw new Error("Refusing to call Pinecone upsert with an empty/invalid records array.");
   }
- 
+
   const attempts = [
     { label: "upsert({ records })", run: () => index.upsert({ records }) },
     { label: "upsert(records)", run: () => index.upsert(records) },
   ];
- 
+
   let lastErr;
   for (const attempt of attempts) {
     try {
@@ -122,50 +123,63 @@ async function upsertWithFallback(index, records) {
       console.warn(`[Worker] ⚠️ Upsert format "${attempt.label}" failed: ${err.message}`);
     }
   }
- 
+
   throw new Error(`All Pinecone upsert formats failed. Last error: ${lastErr?.message}`);
 }
- 
+
 // ---------------------------------------------------------------------------
 // Worker
 // ---------------------------------------------------------------------------
- 
+
 const documentWorker = new Worker(
   "document-processing",
   async (job) => {
     console.log(`\n[Worker] 🧑‍🍳 Chef grabbed Job ID: ${job.id}`);
- 
+
     const filePath = path.resolve(process.cwd(), job.data.path);
     const currentUserId = job.data.userId || "anonymous-user";
- 
+
     try {
       console.log(`[Worker] 🔍 Extracting text from PDF at ${filePath}...`);
       const dataBuffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(dataBuffer);
       const extractedText = pdfData.text;
- 
+
       if (!extractedText || extractedText.trim().length === 0) {
         throw new Error("PDF text extraction returned empty content — nothing to summarize or embed.");
       }
- 
+
       console.log(`[Worker] 🧠 Sending ${extractedText.length} characters to AI...`);
- 
+
       const prompt = `Please provide a concise, 3-sentence summary of the following document:\n\n${extractedText}`;
       let aiSummary = "";
- 
+
+      // 🛡️ Primary + fallback, each going through the shared free-tier
+      // rate limiter and retry-with-backoff (see utils/geminiClient.js).
+      // Uses the SAME model names as chat.js so both files draw from one
+      // accurate, shared daily/per-minute count rather than two separate
+      // (and therefore wrong) counts.
       try {
         const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-        const result = await model.generateContent(prompt);
-        aiSummary = result.response.text();
+        aiSummary = await generateWithRetry(model, "gemini-3.6-flash", prompt);
       } catch (primaryError) {
-        console.warn(`[Worker] ⚠️ Primary model failed. Switching to fallback model...`);
-        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3.7-flash" });
-        const result = await fallbackModel.generateContent(prompt);
-        aiSummary = result.response.text();
+        console.warn(`[Worker] ⚠️ Primary model failed: ${primaryError.message}`);
+        try {
+          const fallbackModel = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+          aiSummary = await generateWithRetry(fallbackModel, "gemini-3.5-flash", prompt);
+        } catch (fallbackError) {
+          if (fallbackError instanceof RateLimitExceededError) {
+            const hours = Math.max(1, Math.ceil(fallbackError.retryAfterSeconds / 3600));
+            throw new Error(
+              `Free-tier daily limit reached for both summary models — try again in about ${hours}h. (${fallbackError.message})`
+            );
+          }
+          throw fallbackError; // let the outer catch below log/fail this job as before
+        }
       }
- 
+
       console.log(`[Worker] ✨ AI Analysis complete!`);
- 
+
       const savedDoc = new Document({
         filename: job.data.filename,
         originalName: job.data.originalname,
@@ -175,33 +189,33 @@ const documentWorker = new Worker(
         status: "completed",
         userId: currentUserId,
       });
- 
+
       await savedDoc.save();
       console.log(`[Worker] 🏆 Success! Document safely filed in the database.`);
- 
+
       console.log(`[Worker] 🔪 Slicing document into manageable chunks...`);
- 
+
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,
       });
- 
+
       const chunks = await splitter.createDocuments([extractedText]);
       const chunkTexts = chunks.map((chunk) => chunk.pageContent);
- 
+
       if (chunkTexts.length === 0) {
         throw new Error("Text splitter produced 0 chunks — refusing to call the embeddings API with nothing.");
       }
- 
+
       console.log(`[Worker] 🧩 Created ${chunkTexts.length} chunks. Generating embeddings...`);
- 
+
       const embeddingsClient = new GoogleGenerativeAIEmbeddings({
         apiKey: process.env.GEMINI_API_KEY,
         model: "gemini-embedding-001",
       });
- 
+
       const rawVectors = await embeddingsClient.embedDocuments(chunkTexts);
- 
+
       if (!rawVectors || rawVectors.length === 0) {
         throw new Error("Gemini AI returned no embedding vectors.");
       }
@@ -210,11 +224,11 @@ const documentWorker = new Worker(
           `Embedding count (${rawVectors.length}) does not match chunk count (${chunkTexts.length}) — refusing to build a mismatched metadata mapping.`
         );
       }
- 
+
       const pineconeRecords = rawVectors.map((vectorItem, index) => {
         const extracted = extractEmbeddingArray(vectorItem);
         const dimensionSafeVector = enforceDimension(extracted, TARGET_DIMENSION);
- 
+
         return {
           id: `${savedDoc._id.toString()}-chunk-${index}`,
           values: dimensionSafeVector,
@@ -225,11 +239,11 @@ const documentWorker = new Worker(
           },
         };
       });
- 
+
       console.log(`[Worker] 🚀 Uploading ${pineconeRecords.length} vectors to Pinecone...`);
       await upsertWithFallback(pineconeIndex, pineconeRecords);
       console.log(`[Worker] 🌲 Successfully embedded and stored in Pinecone!`);
- 
+
       // GUARANTEED CLEANUP: ONLY DELETE ON SUCCESS!
       if (fs.existsSync(filePath)) {
         fs.unlink(filePath, (err) => {
@@ -237,7 +251,7 @@ const documentWorker = new Worker(
           else console.log(`[Worker] 🧹 Cleaned up local temp file successfully.`);
         });
       }
- 
+
       return { status: "success", dbId: savedDoc._id };
     } catch (error) {
       console.error(`[Worker] ❌ Failed to process document:`, error.message);
@@ -246,15 +260,15 @@ const documentWorker = new Worker(
   },
   { connection }
 );
- 
+
 documentWorker.on("failed", (job, err) => {
   console.error(`[Worker] ❌ Job ${job.id} failed: ${err.message}`);
- 
+
   const maxAttempts = job.opts.attempts || 1;
- 
+
   if (job.attemptsMade >= maxAttempts) {
     console.warn(`[Worker] 🚨 Job ${job.id} failed permanently! Cleaning up toxic file...`);
- 
+
     const filePath = path.resolve(process.cwd(), job.data.path);
     if (fs.existsSync(filePath)) {
       fs.unlink(filePath, (unlinkErr) => {
@@ -267,8 +281,7 @@ documentWorker.on("failed", (job, err) => {
     }
   }
 });
- 
+
 console.log("Chef is awake, equipped with AI, and ready to analyze...");
- 
+
 module.exports = documentWorker;
- 
