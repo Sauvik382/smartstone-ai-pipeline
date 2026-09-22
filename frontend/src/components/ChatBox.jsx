@@ -1,10 +1,24 @@
 // src/components/ChatBox.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useChat } from '../hooks/useChat';
+import ReactMarkdown from 'react-markdown'; // Ensure this is imported
 
 export const ChatBox = ({ selectedDoc }) => {
   const [question, setQuestion] = useState('');
   const { messages, loading, sendMessage, clearChat } = useChat();
+  
+  // 1. Create the reference anchor
+  const messagesEndRef = useRef(null);
+
+  // 2. Smooth scrolling function
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // 3. Trigger scroll whenever a new message arrives or loading starts
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, loading]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -59,7 +73,10 @@ export const ChatBox = ({ selectedDoc }) => {
                     : 'bg-gray-100 text-gray-800 rounded-bl-none'
                 }`}
               >
-                {msg.text}
+                {/* Markdown wrapper applied cleanly */}
+                <ReactMarkdown className="markdown-body space-y-2">
+                  {msg.text}
+                </ReactMarkdown>
               </div>
             </div>
           ))
@@ -72,6 +89,9 @@ export const ChatBox = ({ selectedDoc }) => {
             </div>
           </div>
         )}
+        
+        {/* 4. The invisible anchor dynamically pushed to the bottom */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Form */}
